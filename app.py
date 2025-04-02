@@ -39,22 +39,39 @@ def store_vectors_in_chromadb(text_chunks):
         collection.add(ids=[str(i)], embeddings=[embedding], documents=[chunk])
 
 def retrieve_relevant_chunks(query):
-    """Finds the most relevant chunks from ChromaDB for the given query."""
+    """Finds all relevant chunks from ChromaDB for the given query."""
     query_embedding = embedding_model.encode(query).tolist()
-    results = collection.query(query_embeddings=[query_embedding], n_results=3)  # Fetch top 3 matches
-    return results["documents"][0] if results["documents"] else []
+    results = collection.query(query_embeddings=[query_embedding], n_results=len(collection.get()))
+
+    print("DEBUG: Query results:", results)  # Print raw query output
+
+    return results["documents"] if results["documents"] else []
+
 
 def ask_llm(query, retrieved_text):
     """Uses Gemini AI to generate an answer based on retrieved text."""
-    if not retrieved_text:
+    if not retrieved_text or not any(retrieved_text):  # Handle empty case
         return "No relevant information found in the document."
+    
+    # Debugging output
+    print("DEBUG: Retrieved text type:", type(retrieved_text))
+    print("DEBUG: Retrieved text content:", retrieved_text)
 
-    context = "\n".join(retrieved_text)
+    # Ensure it's a list of strings
+    if isinstance(retrieved_text, list):
+        if all(isinstance(item, list) for item in retrieved_text):  # If nested list, flatten it
+            retrieved_text = [chunk for sublist in retrieved_text for chunk in sublist]
+        elif not all(isinstance(item, str) for item in retrieved_text):  # If elements are not strings, convert them
+            retrieved_text = [str(item) for item in retrieved_text]
+
+    context = "\n".join(retrieved_text)  # Now safe to join
     prompt = f"Based on the following document context:\n{context}\nAnswer concisely:\n{query}"
 
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(prompt)
     return response.text.strip() if response.text else "No valid response."
+
+
 
 def main():
     st.title("PDF RAG-Based Question-Answering App")
